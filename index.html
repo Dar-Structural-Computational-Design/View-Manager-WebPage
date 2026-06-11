@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>View Manager — Sheets, views &amp; cleanup</title>
+<meta name="description" content="View Manager is a Revit add-in by the Dar Computational Design Team for batch sheet creation, view management, and model cleanup.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&family=Libre+Franklin:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#FAF9F6;
+  --panel:#F2F0EA;
+  --graphite:#25272B;
+  --ink-2:#5B5F66;
+  --rule:#DFDCD3;
+  --rule-soft:#EAE8E0;
+  --red:#BE3A1F;
+  --red-tint:#F6E7E1;
+  --serif:'Source Serif 4',Georgia,serif;
+  --sans:'Libre Franklin',-apple-system,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono','Consolas',monospace;
+  --max:1180px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--paper);
+  color:var(--graphite);
+  font-family:var(--sans);
+  font-size:16px;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:var(--red-tint);color:var(--red)}
+a{color:inherit}
+img{display:block;max-width:100%}
+.wrap{max-width:var(--max);margin:0 auto;padding:0 32px}
+
+/* ---------- top bar ---------- */
+.topbar{
+  position:sticky;top:0;z-index:50;
+  background:rgba(250,249,246,.92);
+  backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--rule);
+}
+.topbar-inner{
+  max-width:var(--max);margin:0 auto;padding:0 32px;
+  height:60px;display:flex;align-items:center;gap:28px;
+}
+.brand{display:flex;align-items:baseline;gap:12px;text-decoration:none}
+.brand .vm{font-family:var(--serif);font-weight:700;font-size:19px;letter-spacing:.01em}
+.brand .tag{font-family:var(--mono);font-size:11px;color:var(--ink-2);letter-spacing:.04em}
+.topnav{margin-left:auto;display:flex;gap:24px;align-items:center}
+.topnav a{
+  text-decoration:none;font-size:13.5px;font-weight:500;color:var(--ink-2);
+  padding:4px 0;border-bottom:2px solid transparent;transition:color .15s,border-color .15s;
+}
+.topnav a:hover{color:var(--graphite);border-color:var(--red)}
+.topnav a.cta{
+  color:#fff;background:var(--graphite);border:none;border-radius:3px;
+  padding:8px 16px;transition:background .15s;
+}
+.topnav a.cta:hover{background:var(--red)}
+@media(max-width:760px){.topnav a:not(.cta){display:none}.brand .tag{display:none}}
+
+/* ---------- hero ---------- */
+.hero{border-bottom:1px solid var(--rule);overflow:hidden}
+.hero-inner{
+  max-width:var(--max);margin:0 auto;padding:72px 32px 80px;
+  display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:64px;align-items:center;
+}
+@media(max-width:920px){.hero-inner{grid-template-columns:1fr;padding:56px 32px}}
+.eyebrow{
+  font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--red);margin-bottom:20px;display:flex;align-items:center;gap:10px;
+}
+.eyebrow::before{content:"";width:34px;height:1px;background:var(--red)}
+h1{
+  font-family:var(--serif);font-weight:700;font-size:clamp(40px,5.2vw,60px);
+  line-height:1.06;letter-spacing:-.015em;margin-bottom:22px;
+}
+.hero p.lede{font-size:18px;color:var(--ink-2);max-width:46ch;margin-bottom:34px}
+.hero-actions{display:flex;gap:14px;flex-wrap:wrap}
+.btn{
+  display:inline-flex;align-items:center;gap:8px;text-decoration:none;cursor:pointer;
+  font-family:var(--sans);font-size:14.5px;font-weight:600;border-radius:3px;
+  padding:12px 22px;border:1px solid var(--graphite);transition:all .15s;
+}
+.btn-solid{background:var(--graphite);color:#fff}
+.btn-solid:hover{background:var(--red);border-color:var(--red)}
+.btn-ghost{background:transparent;color:var(--graphite)}
+.btn-ghost:hover{border-color:var(--red);color:var(--red)}
+
+/* hero drawing sheet */
+.sheet-stage{position:relative}
+.sheet-stage svg{width:100%;height:auto;display:block}
+.draw{
+  fill:none;stroke:var(--graphite);stroke-width:1.4;
+  stroke-dasharray:var(--len);stroke-dashoffset:var(--len);
+  animation:draw 1s cubic-bezier(.4,0,.2,1) forwards;
+  animation-delay:var(--d,0s);
+}
+.draw.thin{stroke-width:.8;stroke:var(--ink-2)}
+.draw.hair{stroke-width:.6;stroke:#B9B6AC}
+.draw.red{stroke:var(--red);stroke-width:1.3}
+.fade{opacity:0;animation:fadein .5s ease forwards;animation-delay:var(--d,0s)}
+.stamp{
+  opacity:0;transform-origin:center;
+  animation:stamp .35s cubic-bezier(.2,1.4,.4,1) forwards;animation-delay:var(--d,0s);
+}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes fadein{to{opacity:1}}
+@keyframes stamp{0%{opacity:0;transform:scale(1.6)}100%{opacity:1;transform:scale(1)}}
+@media(prefers-reduced-motion:reduce){
+  .draw,.draw.red{animation:none;stroke-dashoffset:0}
+  .fade,.stamp{animation:none;opacity:1}
+  html{scroll-behavior:auto}
+}
+
+/* ---------- section scaffolding ---------- */
+section.sheet{border-bottom:1px solid var(--rule)}
+.sec-inner{max-width:var(--max);margin:0 auto;padding:76px 32px}
+.sec-head{display:flex;align-items:baseline;gap:18px;margin-bottom:14px;flex-wrap:wrap}
+.sheet-no{
+  font-family:var(--mono);font-size:12.5px;letter-spacing:.08em;color:var(--red);
+  border:1px solid var(--red);border-radius:2px;padding:3px 9px;white-space:nowrap;
+}
+h2{font-family:var(--serif);font-weight:700;font-size:clamp(28px,3.4vw,38px);letter-spacing:-.01em}
+.sec-sub{color:var(--ink-2);max-width:62ch;margin-bottom:8px}
+
+/* ---------- list of drawings (TOC) ---------- */
+.lod{width:100%;border-collapse:collapse;margin-top:36px;font-size:15px}
+.lod th{
+  font-family:var(--mono);font-weight:500;font-size:11.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-2);text-align:left;
+  padding:0 14px 10px;border-bottom:1.5px solid var(--graphite);
+}
+.lod td{padding:13px 14px;border-bottom:1px solid var(--rule-soft)}
+.lod tr:hover td{background:var(--panel)}
+.lod a{text-decoration:none;display:block}
+.lod .no{font-family:var(--mono);font-size:13px;color:var(--red);white-space:nowrap;width:1%}
+.lod .ttl{font-weight:600}
+.lod .desc{color:var(--ink-2);font-size:14px}
+@media(max-width:640px){.lod .desc{display:none}}
+
+/* ---------- module grid ---------- */
+.group-label{
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-2);margin:44px 0 16px;display:flex;align-items:center;gap:14px;
+}
+.group-label::after{content:"";flex:1;height:1px;background:var(--rule)}
+.mods{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.mod{
+  background:var(--paper);padding:24px 22px;text-decoration:none;
+  transition:background .15s;position:relative;
+}
+.mod:hover{background:var(--panel)}
+.mod:hover .mod-name{color:var(--red)}
+.mod-code{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);margin-bottom:10px}
+.mod-name{font-family:var(--serif);font-weight:600;font-size:18.5px;margin-bottom:7px;transition:color .15s}
+.mod-desc{font-size:13.5px;color:var(--ink-2);line-height:1.55}
+
+/* ---------- doc blocks ---------- */
+.doc{
+  display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:56px;
+  padding:64px 0;border-bottom:1px solid var(--rule-soft);align-items:start;
+}
+.doc:last-child{border-bottom:none;padding-bottom:8px}
+.doc.flip .doc-media{order:-1}
+@media(max-width:920px){.doc{grid-template-columns:1fr;gap:32px}.doc.flip .doc-media{order:0}}
+.doc-code{font-family:var(--mono);font-size:12px;letter-spacing:.1em;color:var(--red);margin-bottom:12px}
+h3{font-family:var(--serif);font-weight:600;font-size:26px;letter-spacing:-.01em;margin-bottom:12px}
+.doc p{color:var(--ink-2);font-size:15px;margin-bottom:18px}
+.steps{counter-reset:step;list-style:none;margin-top:6px}
+.steps li{
+  counter-increment:step;position:relative;padding:10px 0 10px 44px;
+  font-size:14.5px;border-top:1px solid var(--rule-soft);
+}
+.steps li:last-child{border-bottom:1px solid var(--rule-soft)}
+.steps li::before{
+  content:counter(step,decimal-leading-zero);
+  position:absolute;left:0;top:11px;
+  font-family:var(--mono);font-size:12.5px;color:var(--red);
+}
+.steps b{font-weight:600}
+.doc-media figure{margin:0}
+.doc-media .frame{
+  border:1px solid var(--graphite);background:#101114;cursor:zoom-in;
+  box-shadow:6px 6px 0 var(--rule);transition:box-shadow .15s,transform .15s;
+}
+.doc-media .frame:hover{transform:translate(-2px,-2px);box-shadow:8px 8px 0 var(--red-tint)}
+.doc-media figcaption{
+  font-family:var(--mono);font-size:11.5px;color:var(--ink-2);
+  margin-top:12px;letter-spacing:.04em;
+}
+.doc-media figcaption span{color:var(--red)}
+.note{
+  background:var(--panel);border-left:3px solid var(--red);
+  padding:14px 18px;font-size:13.5px;color:var(--ink-2);margin-top:20px;
+}
+
+/* ---------- access / footer ---------- */
+.access{background:var(--graphite);color:#EDEBE5;border-bottom:none}
+.access h2{color:#fff}
+.access .sec-sub{color:#A8ABB0}
+.pathbox{
+  margin-top:30px;display:flex;align-items:stretch;gap:0;max-width:780px;
+  border:1px solid #4A4D53;border-radius:3px;overflow:hidden;
+}
+.pathbox code{
+  flex:1;font-family:var(--mono);font-size:13.5px;color:#D8D6CF;
+  padding:15px 18px;background:#2D3035;overflow-x:auto;white-space:nowrap;display:block;
+}
+.pathbox button{
+  font-family:var(--sans);font-weight:600;font-size:13.5px;cursor:pointer;
+  background:var(--red);color:#fff;border:none;padding:0 24px;transition:background .15s;
+}
+.pathbox button:hover{background:#D6512F}
+.access .fine{font-size:13px;color:#8B8E94;margin-top:16px}
+footer{background:var(--graphite);color:#8B8E94}
+.foot-inner{
+  max-width:var(--max);margin:0 auto;padding:28px 32px;
+  display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+  border-top:1px solid #3A3D42;font-size:13px;
+}
+.foot-inner .darlogo{
+  font-family:var(--mono);font-weight:500;font-size:20px;color:#3ED6C4;letter-spacing:-.02em;
+}
+.foot-inner .sep{flex:1}
+.foot-inner .mono{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em}
+
+/* ---------- lightbox ---------- */
+.lightbox{
+  position:fixed;inset:0;z-index:100;background:rgba(20,21,24,.93);
+  display:none;align-items:center;justify-content:center;padding:4vmin;cursor:zoom-out;
+}
+.lightbox.open{display:flex}
+.lightbox img{max-width:100%;max-height:100%;border:1px solid #4A4D53}
+.lightbox .lb-cap{
+  position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+  font-family:var(--mono);font-size:12px;color:#A8ABB0;letter-spacing:.05em;
+}
+:focus-visible{outline:2px solid var(--red);outline-offset:2px}
+</style>
+</head>
+<body>
+
+<!-- ============ TOP BAR ============ -->
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="#top">
+      <span class="vm">View Manager</span>
+      <span class="tag">SHEETS · VIEWS · CLEANUP</span>
+    </a>
+    <nav class="topnav">
+      <a href="#modules">Modules</a>
+      <a href="#docs-sheet">Documentation</a>
+      <a href="#access" class="cta">Get access</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ============ 0000 · HERO ============ -->
+<section class="hero" id="top">
+  <div class="hero-inner">
+    <div>
+      <div class="eyebrow">Revit add-in · Dar Computational Design</div>
+      <h1>The drawing set,<br>without the drudgery.</h1>
+      <p class="lede">View Manager batches the slowest parts of Revit documentation — creating sheets, stamping revisions, composing parameters, wrangling views and links, and purging what the model no longer needs.</p>
+      <div class="hero-actions">
+        <a class="btn btn-solid" href="#access">Get access</a>
+        <a class="btn btn-ghost" href="#docs-sheet">Read the docs</a>
+      </div>
+    </div>
+
+    <div class="sheet-stage" aria-hidden="true">
+      <!-- animated A1 sheet: border + title block + viewports + redline revision -->
+      <svg viewBox="0 0 640 452" xmlns="http://www.w3.org/2000/svg">
+        <!-- paper shadow -->
+        <rect x="14" y="14" width="616" height="430" fill="#E8E5DC"/>
+        <rect x="6" y="6" width="616" height="430" fill="#FFFFFF" stroke="#DFDCD3" stroke-width="1"/>
+        <!-- sheet border -->
+        <rect class="draw" style="--len:2050px;--d:.1s" x="22" y="22" width="584" height="398"/>
+        <!-- title block (right strip) -->
+        <line class="draw" style="--len:398px;--d:.5s" x1="516" y1="22" x2="516" y2="420"/>
+        <line class="draw thin" style="--len:90px;--d:.7s" x1="516" y1="330" x2="606" y2="330"/>
+        <line class="draw thin" style="--len:90px;--d:.75s" x1="516" y1="360" x2="606" y2="360"/>
+        <line class="draw thin" style="--len:90px;--d:.8s" x1="516" y1="386" x2="606" y2="386"/>
+        <line class="draw thin" style="--len:90px;--d:.62s" x1="516" y1="60" x2="606" y2="60"/>
+        <line class="draw thin" style="--len:90px;--d:.66s" x1="516" y1="92" x2="606" y2="92"/>
+        <!-- viewport 1 : structural plan -->
+        <rect class="draw thin" style="--len:1180px;--d:.9s" x="46" y="46" width="440" height="220"/>
+        <g class="fade" style="--d:1.35s">
+          <!-- grid lines -->
+          <line x1="86" y1="60" x2="86" y2="252" stroke="#C9C6BC" stroke-width=".6" stroke-dasharray="7 4"/>
+          <line x1="186" y1="60" x2="186" y2="252" stroke="#C9C6BC" stroke-width=".6" stroke-dasharray="7 4"/>
+          <line x1="286" y1="60" x2="286" y2="252" stroke="#C9C6BC" stroke-width=".6" stroke-dasharray="7 4"/>
+          <line x1="386" y1="60" x2="386" y2="252" stroke="#C9C6BC" stroke-width=".6" stroke-dasharray="7 4"/>
+          <line x1="60" y1="92" x2="466" y2="92" stroke="#C9C6BC" stroke-width=".6" stroke-dasharray="7 4"/>
+          <line x1="60" y1="156" x2="466" y2="156" stroke="#C9C6BC" stroke-width=".6" stroke-dasharray="7 4"/>
+          <line x1="60" y1="220" x2="466" y2="220" stroke="#C9C6BC" stroke-width=".6" stroke-dasharray="7 4"/>
+          <!-- grid bubbles -->
+          <circle cx="86" cy="54" r="7" fill="none" stroke="#9B988E" stroke-width=".7"/>
+          <circle cx="186" cy="54" r="7" fill="none" stroke="#9B988E" stroke-width=".7"/>
+          <circle cx="286" cy="54" r="7" fill="none" stroke="#9B988E" stroke-width=".7"/>
+          <circle cx="386" cy="54" r="7" fill="none" stroke="#9B988E" stroke-width=".7"/>
+        </g>
+        <g class="fade" style="--d:1.55s">
+          <!-- columns -->
+          <rect x="81" y="87" width="10" height="10" fill="#25272B"/>
+          <rect x="181" y="87" width="10" height="10" fill="#25272B"/>
+          <rect x="281" y="87" width="10" height="10" fill="#25272B"/>
+          <rect x="381" y="87" width="10" height="10" fill="#25272B"/>
+          <rect x="81" y="151" width="10" height="10" fill="#25272B"/>
+          <rect x="181" y="151" width="10" height="10" fill="#25272B"/>
+          <rect x="281" y="151" width="10" height="10" fill="#25272B"/>
+          <rect x="381" y="151" width="10" height="10" fill="#25272B"/>
+          <rect x="81" y="215" width="10" height="10" fill="#25272B"/>
+          <rect x="181" y="215" width="10" height="10" fill="#25272B"/>
+          <rect x="281" y="215" width="10" height="10" fill="#25272B"/>
+          <rect x="381" y="215" width="10" height="10" fill="#25272B"/>
+          <!-- shear wall -->
+          <rect x="186" y="120" width="100" height="8" fill="#5B5F66"/>
+        </g>
+        <!-- viewport 2 : section -->
+        <rect class="draw thin" style="--len:780px;--d:1.15s" x="46" y="288" width="280" height="110"/>
+        <g class="fade" style="--d:1.7s">
+          <line x1="66" y1="378" x2="306" y2="378" stroke="#25272B" stroke-width="1.6"/>
+          <line x1="96" y1="308" x2="96" y2="378" stroke="#5B5F66" stroke-width="2.4"/>
+          <line x1="186" y1="308" x2="186" y2="378" stroke="#5B5F66" stroke-width="2.4"/>
+          <line x1="276" y1="308" x2="276" y2="378" stroke="#5B5F66" stroke-width="2.4"/>
+          <line x1="86" y1="338" x2="286" y2="338" stroke="#5B5F66" stroke-width="2"/>
+          <line x1="86" y1="310" x2="286" y2="310" stroke="#5B5F66" stroke-width="2"/>
+        </g>
+        <!-- viewport 3 : schedule lines -->
+        <rect class="draw thin" style="--len:600px;--d:1.3s" x="346" y="288" width="140" height="110"/>
+        <g class="fade" style="--d:1.8s">
+          <line x1="358" y1="308" x2="474" y2="308" stroke="#9B988E" stroke-width=".8"/>
+          <line x1="358" y1="326" x2="474" y2="326" stroke="#C9C6BC" stroke-width=".6"/>
+          <line x1="358" y1="344" x2="474" y2="344" stroke="#C9C6BC" stroke-width=".6"/>
+          <line x1="358" y1="362" x2="474" y2="362" stroke="#C9C6BC" stroke-width=".6"/>
+          <line x1="358" y1="380" x2="474" y2="380" stroke="#C9C6BC" stroke-width=".6"/>
+        </g>
+        <!-- title block text -->
+        <g class="fade" style="--d:1.95s" font-family="'IBM Plex Mono',monospace" fill="#5B5F66">
+          <text x="524" y="44" font-size="8" letter-spacing="1.5">PROJECT</text>
+          <text x="524" y="78" font-size="8" letter-spacing="1.5">DRAWN BY</text>
+          <text x="524" y="84" font-size="9" fill="#25272B" dy="14">VIEW MANAGER</text>
+          <text x="524" y="348" font-size="8" letter-spacing="1.5">SHEET NO.</text>
+          <text x="524" y="378" font-size="8" letter-spacing="1.5">REV</text>
+        </g>
+        <text class="stamp" style="--d:2.2s" x="524" y="412" font-family="'IBM Plex Mono',monospace" font-size="15" font-weight="500" fill="#25272B">1003-GF</text>
+        <!-- redline revision cloud + delta -->
+        <path class="draw red" style="--len:300px;--d:2.45s" d="M205,108 a9,9 0 0 1 14,-6 a9,9 0 0 1 15,-1 a9,9 0 0 1 15,1 a9,9 0 0 1 14,4 a9,9 0 0 1 6,13 a9,9 0 0 1 -4,14 a9,9 0 0 1 -13,7 a9,9 0 0 1 -15,2 a9,9 0 0 1 -15,-2 a9,9 0 0 1 -12,-7 a9,9 0 0 1 -5,-13 a9,9 0 0 1 0,-12 z"/>
+        <g class="stamp" style="--d:2.75s">
+          <path d="M583,366 l9,16 h-18 z" fill="none" stroke="#BE3A1F" stroke-width="1.3"/>
+          <text x="583" y="380" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#BE3A1F" text-anchor="middle">1</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 0001 · LIST OF DRAWINGS ============ -->
+<section class="sheet" id="lod">
+  <div class="sec-inner">
+    <div class="sec-head">
+      <span class="sheet-no">0001</span>
+      <h2>List of drawings</h2>
+    </div>
+    <p class="sec-sub">This page is organised like the sets it produces. Every section carries a sheet number — jump straight to the one you need.</p>
+    <table class="lod">
+      <thead><tr><th>No.</th><th>Title</th><th>Contents</th></tr></thead>
+      <tbody>
+        <tr><td class="no"><a href="#modules">0002</a></td><td class="ttl"><a href="#modules">Module index</a></td><td class="desc">All eight modules at a glance, grouped as they appear in the app.</td></tr>
+        <tr><td class="no"><a href="#docs-sheet">0100</a></td><td class="ttl"><a href="#docs-sheet">Revit Sheet</a></td><td class="desc">Create sheets, add revisions, compose sheet parameters.</td></tr>
+        <tr><td class="no"><a href="#docs-view">0200</a></td><td class="ttl"><a href="#docs-view">Revit View</a></td><td class="desc">Duplicate, rename, and control link visibility across views.</td></tr>
+        <tr><td class="no"><a href="#docs-util">0300</a></td><td class="ttl"><a href="#docs-util">Utilities</a></td><td class="desc">Purge unused elements and build scope-box selection filters.</td></tr>
+        <tr><td class="no"><a href="#access">0400</a></td><td class="ttl"><a href="#access">Get access</a></td><td class="desc">Install path and rollout notes for Dar staff.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ 0002 · MODULE INDEX ============ -->
+<section class="sheet" id="modules">
+  <div class="sec-inner">
+    <div class="sec-head">
+      <span class="sheet-no">0002</span>
+      <h2>Eight modules, one sidebar</h2>
+    </div>
+    <p class="sec-sub">Everything lives in a single window. The groups below mirror the app's navigation — what you see here is what you get there.</p>
+
+    <div class="group-label">Revit Sheet</div>
+    <div class="mods">
+      <a class="mod" href="#m-create-sheet">
+        <div class="mod-code">0101</div>
+        <div class="mod-name">Create Revit Sheet</div>
+        <div class="mod-desc">Generate sheets from selected views with a chosen title block and viewport type.</div>
+      </a>
+      <a class="mod" href="#m-revision">
+        <div class="mod-code">0102</div>
+        <div class="mod-name">Add Sheet Revision</div>
+        <div class="mod-desc">Stamp a revision onto many sheets in one pass instead of one at a time.</div>
+      </a>
+      <a class="mod" href="#m-parameter">
+        <div class="mod-code">0103</div>
+        <div class="mod-name">Edit Sheet Parameter</div>
+        <div class="mod-desc">Compose parameter values from concatenation rules — prefix, source, suffix, substring.</div>
+      </a>
+    </div>
+
+    <div class="group-label">Revit View</div>
+    <div class="mods">
+      <a class="mod" href="#m-duplicate">
+        <div class="mod-code">0201</div>
+        <div class="mod-name">Duplicate Revit View</div>
+        <div class="mod-desc">Batch-duplicate views without the click-per-view ritual.</div>
+      </a>
+      <a class="mod" href="#m-rename">
+        <div class="mod-code">0202</div>
+        <div class="mod-name">Rename Revit View</div>
+        <div class="mod-desc">Rename views in bulk with consistent, predictable naming.</div>
+      </a>
+      <a class="mod" href="#m-links">
+        <div class="mod-code">0203</div>
+        <div class="mod-name">Edit Revit Links Visibility</div>
+        <div class="mod-desc">Hide or show selected Revit links across any set of plan, section, or 3D views.</div>
+      </a>
+    </div>
+
+    <div class="group-label">Utilities</div>
+    <div class="mods">
+      <a class="mod" href="#m-purge">
+        <div class="mod-code">0301</div>
+        <div class="mod-name">Purge Unused</div>
+        <div class="mod-desc">Remove unused view templates, filters, views, and scope boxes from the model.</div>
+      </a>
+      <a class="mod" href="#m-scopebox">
+        <div class="mod-code">0302</div>
+        <div class="mod-name">Create Scope Box Selection Filter</div>
+        <div class="mod-desc">Turn scope boxes into selection filters you can actually reuse.</div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 0100 · REVIT SHEET DOCS ============ -->
+<section class="sheet" id="docs-sheet">
+  <div class="sec-inner">
+    <div class="sec-head">
+      <span class="sheet-no">0100</span>
+      <h2>Revit Sheet</h2>
+    </div>
+    <p class="sec-sub">Sheet production is the most repetitive work in a Revit project. These three modules turn it into selection plus one click.</p>
+
+    <div class="doc" id="m-create-sheet">
+      <div>
+        <div class="doc-code">0101 · REVIT SHEET</div>
+        <h3>Create Revit Sheet</h3>
+        <p>Pick the views, pick the title block, pick the viewport type — View Manager creates a sheet per view and places the viewport for you. Works with parent and dependent views alike.</p>
+        <ol class="steps">
+          <li>Choose <b>Parent view</b> or <b>Dependent view</b> as the source list.</li>
+          <li>Search and tick the views to sheet. Multi-select is the point.</li>
+          <li>Pick a <b>Title block</b> type from the project's loaded families.</li>
+          <li>Pick a <b>Viewport type</b> (e.g. NoTitle).</li>
+          <li>Hit <b>Create Sheet</b>. One sheet per selected view, viewport placed.</li>
+        </ol>
+      </div>
+      <div class="doc-media">
+        <figure>
+          <img class="frame" src="media/create-sheet.png" alt="Create Sheet module: view list with search, title block and viewport type selectors" loading="lazy" data-cap="0101 · CREATE REVIT SHEET">
+          <figcaption><span>FIG 0101</span> — View selection with title block &amp; viewport setup</figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <div class="doc flip" id="m-revision">
+      <div>
+        <div class="doc-code">0102 · REVIT SHEET</div>
+        <h3>Add Sheet Revision</h3>
+        <p>Issuing a revision across a 200-sheet set shouldn't mean opening 200 sheets. Select the sheets, select the revision, apply once.</p>
+        <ol class="steps">
+          <li>Search and select the target sheets.</li>
+          <li>Choose the revision to stamp.</li>
+          <li>Apply — the revision lands on every selected sheet.</li>
+        </ol>
+      </div>
+      <div class="doc-media">
+        <div class="note">Pairs naturally with <b>0103 Edit Sheet Parameter</b> when an issue requires both a revision stamp and a parameter update across the same set.</div>
+      </div>
+    </div>
+
+    <div class="doc" id="m-parameter">
+      <div>
+        <div class="doc-code">0103 · REVIT SHEET</div>
+        <h3>Edit Sheet Parameter</h3>
+        <p>Compose a parameter value for many sheets from a concatenation rule instead of typing it sheet by sheet. Build the value from a prefix, a source parameter, and a suffix — optionally slicing the source with a substring.</p>
+        <ol class="steps">
+          <li>Select the sheets to update.</li>
+          <li>Choose the target parameter — <b>Built-in</b>, <b>Shared</b>, or <b>Project</b>.</li>
+          <li>Build the rule: <b>Prefix</b> + source parameter + <b>Suffix</b>.</li>
+          <li>Optionally enable <b>Substring</b> with start/end index to slice the source value.</li>
+          <li>Tick <b>Include project information parameters</b> to pull from project info.</li>
+          <li>Stack rules with <b>Add new parameter</b>, then <b>Apply</b>.</li>
+        </ol>
+      </div>
+      <div class="doc-media">
+        <figure>
+          <img class="frame" src="media/edit-sheet-parameter.png" alt="Edit Sheet Parameter module: sheet list and concatenation rule builder with prefix, suffix and substring controls" loading="lazy" data-cap="0103 · EDIT SHEET PARAMETER">
+          <figcaption><span>FIG 0103</span> — Concatenation rule builder</figcaption>
+        </figure>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 0200 · REVIT VIEW DOCS ============ -->
+<section class="sheet" id="docs-view">
+  <div class="sec-inner">
+    <div class="sec-head">
+      <span class="sheet-no">0200</span>
+      <h2>Revit View</h2>
+    </div>
+    <p class="sec-sub">View housekeeping at batch scale — duplication, naming, and link visibility without per-view surgery.</p>
+
+    <div class="doc" id="m-duplicate">
+      <div>
+        <div class="doc-code">0201 · REVIT VIEW</div>
+        <h3>Duplicate Revit View</h3>
+        <p>Select any number of views and duplicate them in one operation — the setup step for coordination sets, markup copies, and discipline-specific variants.</p>
+        <ol class="steps">
+          <li>Search and select the source views.</li>
+          <li>Choose duplication options.</li>
+          <li>Run — duplicates are created for the full selection.</li>
+        </ol>
+      </div>
+      <div class="doc-media" id="m-rename">
+        <div class="doc-code">0202 · REVIT VIEW</div>
+        <h3>Rename Revit View</h3>
+        <p>Apply consistent naming across a batch of views in a single pass — no double-click-rename loops, no drifting conventions between floors.</p>
+        <ol class="steps">
+          <li>Select the views to rename.</li>
+          <li>Define the renaming rule.</li>
+          <li>Apply — names update across the whole selection.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="doc flip" id="m-links">
+      <div>
+        <div class="doc-code">0203 · REVIT VIEW</div>
+        <h3>Edit Revit Links Visibility</h3>
+        <p>Hide or show selected Revit links across any set of views — plans, sections, or 3D — and decide explicitly how view templates are treated instead of fighting them.</p>
+        <ol class="steps">
+          <li>Filter the view list by <b>Plan</b>, <b>Section</b>, or <b>3D</b>.</li>
+          <li>Search and select the target views.</li>
+          <li>Select the Revit links to control.</li>
+          <li>Choose template handling: <b>Ignore views with templates</b> or <b>Override view templates</b>.</li>
+          <li>Pick <b>Hide links</b> or <b>Unhide links</b>, then <b>Apply</b>.</li>
+        </ol>
+      </div>
+      <div class="doc-media">
+        <figure>
+          <img class="frame" src="media/edit-link-visibility.png" alt="Edit Link Visibility module: view list filtered by type, link selection, and view template handling options" loading="lazy" data-cap="0203 · EDIT REVIT LINKS VISIBILITY">
+          <figcaption><span>FIG 0203</span> — Link visibility with explicit template handling</figcaption>
+        </figure>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 0300 · UTILITIES DOCS ============ -->
+<section class="sheet" id="docs-util">
+  <div class="sec-inner">
+    <div class="sec-head">
+      <span class="sheet-no">0300</span>
+      <h2>Utilities</h2>
+    </div>
+    <p class="sec-sub">Model hygiene. Old templates, orphaned filters, abandoned working views — the weight a long project accumulates.</p>
+
+    <div class="doc" id="m-purge">
+      <div>
+        <div class="doc-code">0301 · UTILITIES</div>
+        <h3>Purge Unused</h3>
+        <p>Four columns, four categories: view templates, view filters, views, and scope boxes. Search each, select what goes, and purge per category — surgical, not scorched-earth.</p>
+        <ol class="steps">
+          <li>Review each column — <b>templates</b>, <b>filters</b> (rule-based or selection), <b>views</b>, <b>scope boxes</b>.</li>
+          <li>Use search to isolate candidates in large models.</li>
+          <li>Select the unused elements in any column.</li>
+          <li>Purge per category with its own button — each action is scoped and deliberate.</li>
+        </ol>
+        <div class="note">Purging is destructive by design. Run it on a synced, backed-up model and review selections before each purge — there is no undo across worksharing operations.</div>
+      </div>
+      <div class="doc-media">
+        <figure>
+          <img class="frame" src="media/purge-unused.png" alt="Purge Unused module: four columns for view templates, view filters, views, and scope boxes with per-category purge buttons" loading="lazy" data-cap="0301 · PURGE UNUSED">
+          <figcaption><span>FIG 0301</span> — Templates, filters, views, scope boxes — purged per category</figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <div class="doc flip" id="m-scopebox">
+      <div>
+        <div class="doc-code">0302 · UTILITIES</div>
+        <h3>Create Scope Box Selection Filter</h3>
+        <p>Generate selection filters from the model's scope boxes, making zone-based selection a saved, reusable action instead of a manual ritual.</p>
+        <ol class="steps">
+          <li>Open the module — scope boxes are read from the model.</li>
+          <li>Generate the selection filters.</li>
+          <li>Reuse them anywhere Revit accepts a selection filter.</li>
+        </ol>
+      </div>
+      <div class="doc-media">
+        <div class="note">Built for zoned projects — towers split by scope box, phased slabs, or anything where "select everything in Zone 5" is a daily request.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 0400 · ACCESS ============ -->
+<section class="sheet access" id="access">
+  <div class="sec-inner">
+    <div class="sec-head">
+      <span class="sheet-no" style="border-color:#3ED6C4;color:#3ED6C4">0400</span>
+      <h2>Get access</h2>
+    </div>
+    <p class="sec-sub">View Manager is an internal Dar tool by the Computational Design Team. Copy the path below and run the installer from the shared drive.</p>
+    <div class="pathbox">
+      <code id="installPath">K:\Dar_Cads\General\Computational Design Team\Setup\DarTools 2\Version 2.0.0</code>
+      <button id="copyBtn" type="button">Copy path</button>
+    </div>
+    <p class="fine">Requires Autodesk Revit. Questions, bugs, and feature requests go to the Computational Design Team.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="foot-inner">
+    <span class="darlogo">dar</span>
+    <span>Computational Design Team</span>
+    <span class="sep"></span>
+    <span class="mono">VIEW MANAGER · SHEETS, VIEWS &amp; CLEANUP</span>
+  </div>
+</footer>
+
+<!-- lightbox -->
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Screenshot viewer">
+  <img id="lbImg" src="" alt="">
+  <div class="lb-cap" id="lbCap"></div>
+</div>
+
+<script>
+(function(){
+  // lightbox
+  var lb = document.getElementById('lightbox');
+  var lbImg = document.getElementById('lbImg');
+  var lbCap = document.getElementById('lbCap');
+  document.querySelectorAll('img.frame').forEach(function(img){
+    img.setAttribute('tabindex','0');
+    function open(){
+      lbImg.src = img.src;
+      lbImg.alt = img.alt;
+      lbCap.textContent = img.dataset.cap || '';
+      lb.classList.add('open');
+      document.body.style.overflow = 'hidden';
+    }
+    img.addEventListener('click', open);
+    img.addEventListener('keydown', function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); open(); }});
+  });
+  function close(){
+    lb.classList.remove('open');
+    lbImg.src = '';
+    document.body.style.overflow = '';
+  }
+  lb.addEventListener('click', close);
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape' && lb.classList.contains('open')) close(); });
+
+  // copy install path
+  var btn = document.getElementById('copyBtn');
+  var path = document.getElementById('installPath');
+  btn.addEventListener('click', function(){
+    var text = path.textContent;
+    function done(){
+      btn.textContent = 'Copied';
+      setTimeout(function(){ btn.textContent = 'Copy path'; }, 1800);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(done).catch(function(){ fallback(); });
+    } else { fallback(); }
+    function fallback(){
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); done(); } catch(e){}
+      document.body.removeChild(ta);
+    }
+  });
+})();
+</script>
+</body>
+</html>
